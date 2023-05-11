@@ -1,0 +1,3 @@
+ansible_user: michael
+ansible_ssh_private_key_file: /home/michael/.ssh/cluster_rsa
+ansible_ssh_public_key_file: /home/michael/.ssh/cluster_rsa.pub
