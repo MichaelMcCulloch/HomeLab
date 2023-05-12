@@ -1,0 +1,66 @@
+---
+- name: Prepare environment
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Configure enp2s0 interface for Ceph traffic
+      ansible.builtin.template:
+        src: interfaces.j2
+        dest: /etc/network/interfaces.d/enp2s0
+      notify: Restart networking
+      vars:
+        ansible_interface: enp2s0
+        ansible_address: "{{ cluster_ip[inventory_hostname][1] }}"
+        ansible_netmask: "{{ netmask }}"
+
+    - name: Find enx8 interface
+      set_fact:
+        enx8_interface: "{{ ansible_interfaces | select('match', '^enx8.*') | first }}"
+
+    - name: Configure enx8 interface for OpenStack and Kubernetes gossip traffic
+      ansible.builtin.template:
+        src: interfaces.j2
+        dest: "/etc/network/interfaces.d/{{ enx8_interface }}"
+      notify: Restart networking
+      vars:
+        ansible_interface: "{{ enx8_interface }}"
+        ansible_address: "{{ cluster_ip[inventory_hostname][0] }}"
+        ansible_netmask: "{{ netmask }}"
+        ansible_gateway: "{{ gateway }}"
+
+    - name: Update /etc/hosts file
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item]['cluster_ip'][item][0] }} {{ item }}"
+      loop: "{{ groups['cluster'] }}"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: safe
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - ifupdown
+          - vlan
+          - ntp
+        state: present
+
+    - name: Configure NTP
+      ansible.builtin.template:
+        src: ntp.conf.j2
+        dest: /etc/ntp.conf
+      notify: Restart NTP
+
+  handlers:
+    - name: Restart networking
+      become: true
+      ansible.builtin.service:
+        name: networking
+        state: restarted
+
+    - name: Restart NTP
+      ansible.builtin.service:
+        name: ntp
+        state: restarted

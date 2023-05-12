@@ -1,3 +1,21 @@
 ansible_user: michael
 ansible_ssh_private_key_file: /home/michael/.ssh/cluster_rsa
 ansible_ssh_public_key_file: /home/michael/.ssh/cluster_rsa.pub
+ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+  - 3.pool.ntp.org
+ceph_disk: /dev/nvme0n1
+netmask: 255.255.255.0
+gateway: 10.0.0.1
+cluster_ip:
+  node1:
+    - 10.0.0.209
+    - 11.0.0.1
+  node2:
+    - 10.0.0.221
+    - 11.0.0.2
+  node3:
+    - 10.0.0.160
+    - 11.0.0.3

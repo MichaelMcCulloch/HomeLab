@@ -1,0 +1,21 @@
+# /etc/ntp.conf, configuration for ntpd
+
+# NTP server list
+{% for server in ntp_servers %}
+server {{ server }}
+{% endfor %}
+
+# Access control
+restrict default kod nomodify notrap nopeer mssntp
+restrict -6 default kod nomodify notrap nopeer mssntp
+
+# Drift file
+driftfile /var/lib/ntp/ntp.drift
+
+# Logging
+logfile /var/log/ntp.log
+statsdir /var/log/ntpstats/
+statistics loopstats peerstats clockstats
+filegen loopstats file loopstats type day enable
+filegen peerstats file peerstats type day enable
+filegen clockstats file clockstats type day enable

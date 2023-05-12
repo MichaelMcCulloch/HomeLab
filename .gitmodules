@@ -1,0 +1,3 @@
+[submodule "base/openstack-ansible"]
+	path = base/openstack-ansible
+	url = https://opendev.org/openstack/openstack-ansible

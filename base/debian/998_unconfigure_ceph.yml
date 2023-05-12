@@ -1,0 +1,47 @@
+---
+- name: Reboot cluster
+  hosts: cluster
+  become: true
+  tasks:
+    # - name: Reboot
+    #   ansible.builtin.reboot:
+    #     reboot_command: "systemctl reboot"
+
+    - name: Get OSD IDs
+      ansible.builtin.shell:
+        cmd: "cephadm shell -- ceph osd ls"
+      register: osd_ids
+      run_once: true
+
+    - name: Stop and remove OSDs from the Ceph cluster
+      ansible.builtin.shell:
+        cmd: "cephadm shell -- ceph osd out {{ item }} && cephadm shell -- ceph osd stop {{ item }} && cephadm shell -- ceph osd rm {{ item }}"
+      loop: "{{ osd_ids.stdout_lines }}"
+      run_once: true
+
+    - name: Remove Ceph monitors
+      ansible.builtin.shell:
+        cmd: "cephadm shell -- ceph mon rm {{ inventory_hostname }}"
+      run_once: true
+
+    - name: Remove Ceph configuration and keyring files
+      ansible.builtin.file:
+        path: "/etc/ceph/{{ item }}"
+        state: absent
+      loop:
+        - ceph.conf
+        - ceph.client.admin.keyring
+    - name: delete Delete PhysicalVolumes
+      ansible.builtin.shell:
+        cmd: "pvremove --yes {{ ceph_disk }} --force --force"
+    - name: Remove Ceph data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/ceph
+        - /etc/ceph
+
+    # - name: Reboot
+    #   ansible.builtin.reboot:
+    #     reboot_command: "systemctl reboot"
