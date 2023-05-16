@@ -106,7 +106,7 @@
 
     - name: Create Ceph pool for OpenStack
       ansible.builtin.command:
-        cmd: "cephadm shell -- ceph osd pool create openstack 128"
+        cmd: "cephadm shell -- ceph osd pool create openstack"
       run_once: true
 
     - name: Test Ceph cluster

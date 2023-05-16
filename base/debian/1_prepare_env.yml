@@ -14,7 +14,7 @@
         ansible_netmask: "{{ netmask }}"
 
     - name: Find enx8 interface
-      set_fact:
+      ansible.builtin.set_fact:
         enx8_interface: "{{ ansible_interfaces | select('match', '^enx8.*') | first }}"
 
     - name: Configure enx8 interface for OpenStack and Kubernetes gossip traffic
