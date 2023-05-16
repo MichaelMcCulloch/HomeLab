@@ -40,7 +40,7 @@
 
     - name: Gather Ceph Logical Volume Name
       ansible.builtin.shell: set -o pipefail |
-        pvdisplay -C --select pv_name=/dev/nvme0n1 -o lv_name --noheadings | xargs
+        pvdisplay -C --select pv_name={{ ceph_disk }} -o lv_name --noheadings | xargs
       register: ceph_lv_name
       changed_when: ceph_lv_name.rc != 0
 
@@ -51,7 +51,7 @@
 
     - name: Gather Ceph Volume Group Name
       ansible.builtin.shell: set -o pipefail |
-        pvdisplay -C --select pv_name=/dev/nvme0n1 -o vg_name --noheadings | xargs
+        pvdisplay -C --select pv_name={{ ceph_disk }} -o vg_name --noheadings | xargs
       register: ceph_vg_name
       changed_when: ceph_vg_name.rc != 0
 
