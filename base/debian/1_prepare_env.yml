@@ -7,6 +7,7 @@
       ansible.builtin.template:
         src: interfaces.j2
         dest: /etc/network/interfaces.d/enp2s0
+        mode: "0755"
       notify: Restart networking
       vars:
         ansible_interface: enp2s0
@@ -21,12 +22,21 @@
       ansible.builtin.template:
         src: interfaces.j2
         dest: "/etc/network/interfaces.d/{{ enx8_interface }}"
+        mode: "0755"
       notify: Restart networking
       vars:
         ansible_interface: "{{ enx8_interface }}"
         ansible_address: "{{ cluster_ip[inventory_hostname][0] }}"
         ansible_netmask: "{{ netmask }}"
         ansible_gateway: "{{ gateway }}"
+
+    - name: Generate a gossip ssh keyparing
+      when: "inventory_hostname == groups['cluster'][0]"
+      ansible.builtin.shell:
+        cmd: "ssh-keygen -q -t rsa -N '' -f ~/.ssh/{{ gossip_ssh_private_key_file }} <<<y >/dev/null 2>&1"
+      args:
+        executable: /bin/bash
+      changed_when: true
 
     - name: Update /etc/hosts file
       ansible.builtin.lineinfile:
@@ -36,7 +46,7 @@
 
     - name: Update system packages
       ansible.builtin.apt:
-        update_cache: yes
+        update_cache: true
         upgrade: safe
 
     - name: Install required packages
@@ -51,7 +61,9 @@
       ansible.builtin.template:
         src: ntp.conf.j2
         dest: /etc/ntp.conf
+        mode: "0755"
       notify: Restart NTP
+
 
   handlers:
     - name: Restart networking

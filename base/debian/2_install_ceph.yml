@@ -23,13 +23,18 @@
         name:
           - cephadm
         state: present
+
     - name: Add cephadm Pacific repository
       ansible.builtin.command:
         cmd: cephadm add-repo --release pacific
+      register: ceph_repo_add
+      changed_when: "'repository added' in ceph_repo_add.stdout"
 
     - name: Install ceph-common
       ansible.builtin.command:
         cmd: cephadm install ceph-common
+      register: ceph_common_install
+      changed_when: "ceph_common_install.stdout | length > 0"
 
 - name: Configure Ceph
   hosts: cluster
@@ -39,62 +44,78 @@
       ansible.builtin.file:
         path: /etc/ceph
         state: directory
-        mode: 755
+        mode: "0755"
 
     - name: Bootstrap Ceph cluster (run only on first node)
       ansible.builtin.command:
         cmd: "cephadm bootstrap --mon-ip {{ cluster_ip[inventory_hostname][1] }}"
       args:
         creates: /etc/ceph/ceph.conf
-      run_once: true
+      when: "inventory_hostname == groups['cluster'][0]"
 
-    - name: Fetch Ceph configuration and keyring from the first node
+    - name: Fetch ceph keyring and config from bootstrap host
       ansible.builtin.fetch:
-        src: "{{ item }}"
-        dest: "/tmp/{{ inventory_hostname }}/"
-        flat: yes
-      loop:
-        - /etc/ceph/ceph.conf
-        - /etc/ceph/ceph.client.admin.keyring
-      delegate_to: "{{ groups['cluster'][0] }}"
-
-    - name: Distribute Ceph configuration and keyring to all nodes
-      ansible.builtin.copy:
-        src: "/tmp/{{ inventory_hostname }}/{{ item }}"
-        dest: "/etc/ceph/{{ item }}"
-        mode: 0644
+        src: "/etc/ceph/{{ item }}"
+        dest: /tmp/
+        flat: true
       loop:
         - ceph.conf
         - ceph.client.admin.keyring
+      when: "inventory_hostname == groups['cluster'][0]"
 
-    - name: Export the ceph public key to a temp file
-      ansible.builtin.shell:
-        cmd: "ceph cephadm get-pub-key > /tmp//ceph.pub"
-      run_once: true
 
-    - name: Fetch cephadm SSH key from the first node
-      ansible.builtin.fetch:
-        src: /tmp/ceph.pub
-        dest: "/tmp/{{ inventory_hostname }}/ceph.pub"
-        flat: yes
-      delegate_to: "{{ groups['cluster'][0] }}"
+    - name: Copy ceph keyring and config to other nodes
+      ansible.builtin.copy:
+        src: /tmp/{{ item }}
+        dest: "/etc/ceph/"
+        mode: "0755"
+      loop:
+        - ceph.conf
+        - ceph.client.admin.keyring
+      when: "inventory_hostname != groups['cluster'][0]"
+
+
+    - name: Export the ceph public key (run only on first node)
+      ansible.builtin.command:
+        cmd: "ceph cephadm get-pub-key"
+      register: ceph_pub_key
+      when: "inventory_hostname == groups['cluster'][0]"
+      changed_when: false
+
+
+    - name: Set ceph_pub_key fact
+      ansible.builtin.set_fact:
+        ceph_pub_key: "{{ ceph_pub_key.stdout }}"
+      when: "inventory_hostname == groups['cluster'][0]"
+
+    - name: Share ceph_pub_key with other machines in the cluster group
+      ansible.builtin.set_fact:
+        ceph_pub_key: "{{ hostvars[groups['cluster'][0]]['ceph_pub_key'] }}"
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      when: "inventory_hostname == groups['cluster'][0]"
+      loop: "{{ groups['cluster'][1:] }}"
 
     - name: Add cephadm SSH key to authorized_keys
-      ansible.builtin.authorized_key:
+      ansible.posix.authorized_key:
         user: root
         state: present
-        key: "{{ lookup('file', '/tmp/{{ inventory_hostname }}/ceph.pub') }}"
+        key: "{{ ceph_pub_key }}"
 
     - name: Add other nodes as Ceph hosts
       ansible.builtin.command:
-        cmd: "cephadm shell -- ceph orch host add {{ item }}"
+        cmd: "cephadm shell -- ceph orch host add {{ item }} {{ cluster_ip[item][1] }}"
       loop: "{{ groups['cluster'][1:] }}"
-      run_once: true
+      when: "inventory_hostname == groups['cluster'][0]"
+      register: ceph_orch_host_add
+      changed_when: "'Added host' in ceph_orch_host_add.stdout_lines"
 
     - name: Configure Ceph OSDs
       ansible.builtin.command:
         cmd: "cephadm shell -- ceph orch apply osd --all-available-devices"
-      run_once: true
+      when: "inventory_hostname == groups['cluster'][0]"
+      register: ceph_orch_apply_osd
+      changed_when: "'Created osd(s)' in ceph_orch_apply_osd.stdout"
 
     - name: Wait for Ceph health to become OK
       ansible.builtin.command:
@@ -103,14 +124,18 @@
       until: "'HEALTH_OK' in result.stdout"
       retries: 10
       delay: 30
+      changed_when: false
 
     - name: Create Ceph pool for OpenStack
       ansible.builtin.command:
         cmd: "cephadm shell -- ceph osd pool create openstack"
-      run_once: true
+      when: "inventory_hostname == groups['cluster'][0]"
+      register: ceph_orch_pool_create
+      changed_when: "'already exists' not in ceph_orch_pool_create.stderr"
 
     - name: Test Ceph cluster
       ansible.builtin.command:
         cmd: "cephadm shell -- ceph -s"
       register: ceph_status
       failed_when: "'HEALTH_OK' not in ceph_status.stdout"
+      changed_when: false

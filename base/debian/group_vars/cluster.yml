@@ -1,6 +1,8 @@
 ansible_user: michael
 ansible_ssh_private_key_file: /home/michael/.ssh/cluster_rsa
 ansible_ssh_public_key_file: /home/michael/.ssh/cluster_rsa.pub
+gossip_ssh_private_key_file: gossip_rsa
+gossip_ssh_public_key_file: gossip_rsa.pub
 ntp_servers:
   - 0.pool.ntp.org
   - 1.pool.ntp.org
