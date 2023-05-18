@@ -55,6 +55,7 @@
           - ifupdown
           - vlan
           - ntp
+          - ufw
         state: present
 
     - name: Configure NTP

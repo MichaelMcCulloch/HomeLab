@@ -126,12 +126,69 @@
       delay: 30
       changed_when: false
 
-    - name: Create Ceph pool for OpenStack
+- name: Configure Ceph RBD for OpenStack
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Create Ceph pools for Glance, Cinder, and Nova (run only on first node)
       ansible.builtin.command:
-        cmd: "cephadm shell -- ceph osd pool create openstack"
+        cmd: "cephadm shell -- ceph osd pool create {{ item }}"
+      loop:
+        - glance
+        - cinder
+        - nova
       when: "inventory_hostname == groups['cluster'][0]"
-      register: ceph_orch_pool_create
-      changed_when: "'already exists' not in ceph_orch_pool_create.stderr"
+      register: ceph_pool_create
+      changed_when: "'pool' in ceph_pool_create.stdout"
+
+    - name: Create Ceph users and keyrings for Glance, Cinder, and Nova (run only on first node)
+      ansible.builtin.shell:
+        cmd: "cephadm shell -- ceph auth get-or-create client.{{ item }} mon 'profile rbd' osd 'profile rbd pool={{ item }}' > /etc/ceph/ceph.client.{{ item }}.keyring"
+      loop:
+        - glance
+        - cinder
+        - nova
+      when: "inventory_hostname == groups['cluster'][0]"
+      register: ceph_user_create
+      changed_when: "'key' in ceph_user_create.stdout"
+
+    - name: Fetch Ceph keyring files for Glance, Cinder, and Nova from the first node
+      ansible.builtin.fetch:
+        src: "/etc/ceph/ceph.client.{{ item }}.keyring"
+        dest: "/tmp/ceph.client.{{ item }}.keyring"
+        flat: true
+      loop:
+        - glance
+        - cinder
+        - nova
+      when: "inventory_hostname == groups['cluster'][0]"
+
+    - name: Copy Ceph keyring files for Glance, Cinder, and Nova to other nodes
+      ansible.builtin.copy:
+        src: "/tmp/ceph.client.{{ item }}.keyring"
+        dest: "/etc/ceph/ceph.client.{{ item }}.keyring"
+        mode: "0644"
+      loop:
+        - glance
+        - cinder
+        - nova
+      when: "inventory_hostname != groups['cluster'][0]"
+
+    - name: Configure OpenStack services to use Ceph
+      ansible.builtin.blockinfile:
+        path: /etc/ceph/ceph.conf
+        block: |
+          [client.glance]
+          keyring = /etc/ceph/ceph.client.glance.keyring
+
+          [client.cinder]
+          keyring = /etc/ceph/ceph.client.cinder.keyring
+
+          [client.nova]
+          keyring = /etc/ceph/ceph.client.nova.keyring
+        mode: "0600"
+        create: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
 
     - name: Test Ceph cluster
       ansible.builtin.command:
