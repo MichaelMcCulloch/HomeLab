@@ -4,7 +4,4 @@
         "titleBar.activeBackground": "#721F52",
         "titleBar.activeForeground": "#FDF8FB"
     },
-    "yaml.schemas": {
-        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook": "file:///home/michael/Dev/cluster_configs/base/debian/1_prepare_env.yml"
-    }
 }
