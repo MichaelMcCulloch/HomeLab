@@ -49,13 +49,18 @@
         update_cache: true
         upgrade: safe
 
-    - name: Install required packages
+    - name: Install required apt packages
       ansible.builtin.apt:
         name:
           - ifupdown
           - vlan
           - ntp
           - ufw
+        state: present
+
+    - name: Install required pip packages
+      ansible.builtin.pip:
+        name: mysqlclient
         state: present
 
     - name: Configure NTP

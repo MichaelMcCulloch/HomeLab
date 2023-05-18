@@ -21,3 +21,8 @@ cluster_ip:
   node3:
     - 10.0.0.160
     - 11.0.0.3
+
+
+# Move to vault!!!
+mysql_root_password: "root_password"
+keystone_db_password: "keystone_password"

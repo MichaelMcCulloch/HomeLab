@@ -3,18 +3,11 @@
   hosts: cluster
   become: true
   tasks:
-
-
-    - name: Get OSD IDs
-      ansible.builtin.command:
-        cmd: "cephadm shell -- ceph osd ls"
-      register: osd_ids
-      when: "inventory_hostname == groups['cluster'][0]"
-      changed_when: false
-
     - name: Gather Ceph FSID
-      ansible.builtin.shell: set -o pipefail |
-        cephadm shell -- ceph fsid | grep "Inferring fsid" | awk '{ print $3 }' | xargs
+      ansible.builtin.shell:
+        cmd: cephadm shell -- ceph fsid 2>/dev/null
+      args:
+        executable: /bin/bash
       register: ceph_fsid
       changed_when: ceph_fsid.rc != 0
 
@@ -22,28 +15,11 @@
       ansible.builtin.set_fact:
         ceph_fsid_name: "{{ ceph_fsid.stdout }}"
 
-    - name: Stop and remove OSDs from the Ceph cluster
-      ansible.builtin.command:
-        cmd: "cephadm shell -- ceph osd out {{ item }} && cephadm shell -- ceph osd stop {{ item }} && cephadm shell -- ceph osd rm {{ item }}"
-      loop: "{{ osd_ids.stdout_lines }}"
-      when: "inventory_hostname == groups['cluster'][0]"
-      changed_when: false
-
-    - name: Remove Ceph monitors
-      ansible.builtin.command:
-        cmd: "cephadm shell -- ceph mon rm {{ inventory_hostname }}"
-      when: "inventory_hostname == groups['cluster'][0]"
-      changed_when: false
-
-    - name: Remove Ceph Cluster by FSID
-      ansible.builtin.shell: set -o pipefail |
-        cephadm rm-cluster --fsid {{ ceph_fsid_name }} --force
-      register: ceph_fsid_rm
-      changed_when: ceph_fsid_rm.rc != 0
-
     - name: Gather Ceph Logical Volume Name
       ansible.builtin.shell: set -o pipefail |
         pvdisplay -C --select pv_name={{ ceph_disk }} -o lv_name --noheadings | xargs
+      args:
+        executable: /bin/bash
       register: ceph_lv_name
       changed_when: ceph_lv_name.rc != 0
 
@@ -52,9 +28,19 @@
       ansible.builtin.set_fact:
         ceph_lv: "{{ ceph_lv_name.stdout }}"
 
+    - name: Remove Ceph Cluster by FSID
+      ansible.builtin.shell: set -o pipefail |
+        cephadm rm-cluster --fsid {{ ceph_fsid_name }} --force
+      args:
+        executable: /bin/bash
+      register: ceph_fsid_rm
+      changed_when: ceph_fsid_rm.rc != 0
+
     - name: Gather Ceph Volume Group Name
       ansible.builtin.shell: set -o pipefail |
         pvdisplay -C --select pv_name={{ ceph_disk }} -o vg_name --noheadings | xargs
+      args:
+        executable: /bin/bash
       register: ceph_vg_name
       changed_when: ceph_vg_name.rc != 0
 

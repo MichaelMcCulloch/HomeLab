@@ -141,6 +141,7 @@
       register: ceph_pool_create
       changed_when: "'pool' in ceph_pool_create.stdout"
 
+    # yamllint disable rule:line-length
     - name: Create Ceph users and keyrings for Glance, Cinder, and Nova (run only on first node)
       ansible.builtin.shell:
         cmd: "cephadm shell -- ceph auth get-or-create client.{{ item }} mon 'profile rbd' osd 'profile rbd pool={{ item }}' > /etc/ceph/ceph.client.{{ item }}.keyring"
@@ -149,6 +150,8 @@
         - cinder
         - nova
       when: "inventory_hostname == groups['cluster'][0]"
+      args:
+        creates: "/etc/ceph/ceph.client.{{ item }}.keyring"
       register: ceph_user_create
       changed_when: "'key' in ceph_user_create.stdout"
 
@@ -167,7 +170,7 @@
       ansible.builtin.copy:
         src: "/tmp/ceph.client.{{ item }}.keyring"
         dest: "/etc/ceph/ceph.client.{{ item }}.keyring"
-        mode: "0644"
+        mode: "0600"
       loop:
         - glance
         - cinder
