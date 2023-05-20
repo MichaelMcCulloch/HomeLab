@@ -26,3 +26,4 @@ cluster_ip:
 # Move to vault!!!
 mysql_root_password: "root_password"
 keystone_db_password: "keystone_password"
+sst_password: "sst_password"

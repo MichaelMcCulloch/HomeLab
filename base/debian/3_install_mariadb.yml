@@ -3,14 +3,22 @@
   hosts: cluster
   become: true
   tasks:
-    - name: Install MariaDB packages
+    - name: Install MariaDB and Galera packages
       ansible.builtin.apt:
         name:
           - mariadb-server
+          - mariadb-client
+          - mariadb-backup
+          - galera-4
           - python3-pymysql
         state: present
 
-    - name: Configure MariaDB
+    - name: Stop MariaDB service
+      ansible.builtin.systemd:
+        name: mariadb
+        state: stopped
+
+    - name: Configure MariaDB with Galera Cluster
       ansible.builtin.blockinfile:
         path: /etc/mysql/mariadb.conf.d/99-openstack.cnf
         create: true
@@ -22,16 +30,17 @@
           max_connections = 4096
           collation-server = utf8_general_ci
           character-set-server = utf8
+          binlog_format = ROW
         marker: "# {mark} ANSIBLE MANAGED BLOCK"
         mode: "0644"
 
-    - name: Start and enable MariaDB service
+    - name: Start MariaDB service
       ansible.builtin.systemd:
         name: mariadb
         state: started
-        enabled: true
 
     - name: Set root password and disallow remote login
+      # when: "inventory_hostname == groups['cluster'][0]"
       block:
         - name: Try with an empty password
           community.mysql.mysql_user:
@@ -55,7 +64,19 @@
             password: "{{ mysql_root_password }}"
             priv: "*.*:ALL,GRANT"
 
+    - name: Create custom my.cnf with root password
+      ansible.builtin.copy:
+        content: |
+          [client]
+          user=root
+          password="{{ mysql_root_password }}"
+        dest: /etc/mysql/conf.d/custom_my.cnf
+        owner: root
+        group: root
+        mode: "0600"
+
     - name: Remove anonymous users
+      when: "inventory_hostname == groups['cluster'][0]"
       community.mysql.mysql_user:
         host_all: true
         login_password: "{{ mysql_root_password }}"
@@ -65,6 +86,7 @@
         state: absent
 
     - name: Remove test database
+      # when: "inventory_hostname == groups['cluster'][0]"
       community.mysql.mysql_db:
         login_password: "{{ mysql_root_password }}"
         login_unix_socket: /run/mysqld/mysqld.sock
@@ -73,6 +95,7 @@
         state: absent
 
     - name: Flush privileges
+      # when: "inventory_hostname == groups['cluster'][0]"
       community.mysql.mysql_user:
         append_privs: true
         login_password: "{{ mysql_root_password }}"
@@ -81,3 +104,78 @@
         name: root
         password: "{{ mysql_root_password }}"
         priv: '*.*:RELOAD'
+
+    - name: Create SST user for Galera Cluster
+      community.mysql.mysql_user:
+        host: localhost
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: root
+        name: sstuser
+        password: "{{ sst_password }}"
+        priv: "*.*:RELOAD,PROCESS,LOCK TABLES,REPLICATION CLIENT"
+        state: present
+
+    - name: Stop MariaDB service
+      ansible.builtin.systemd:
+        name: mariadb
+        state: stopped
+
+    - name: Open required TCP ports for Galera Cluster
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 3306
+        - 4567
+        - 4568
+        - 4444
+
+    - name: Configure MariaDB with Galera Cluster
+      ansible.builtin.blockinfile:
+        path: /etc/mysql/mariadb.conf.d/99-openstack.cnf
+        create: true
+        block: |
+          [mysqld]
+          bind-address = "{{ cluster_ip[inventory_hostname][0] }}"
+          default-storage-engine = innodb
+          innodb_file_per_table = on
+          max_connections = 4096
+          collation-server = utf8_general_ci
+          character-set-server = utf8
+          binlog_format = ROW
+
+          # Galera Cluster settings
+          wsrep_on = ON
+          wsrep_provider = /usr/lib/galera/libgalera_smm.so
+          wsrep_cluster_name = "galera_cluster"
+          wsrep_cluster_address = "gcomm://{{ groups['cluster'] | join(',') }}"
+          wsrep_node_name = "{{ inventory_hostname }}"
+          wsrep_node_address = "{{ cluster_ip[inventory_hostname][0] }}"
+          wsrep_sst_method = mariabackup
+          wsrep_sst_auth = "sstuser:{{ sst_password }}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        mode: "0644"
+
+    
+
+    - name: Bootstrap Galera Cluster on the first node
+      ansible.builtin.command:
+        cmd: "galera_new_cluster"
+      when: "inventory_hostname == groups['cluster'][0]"
+      register: galera_bootstrap
+      changed_when: "'Starting MySQL' in galera_bootstrap.stdout"
+      environment:
+        MYSQLD_OPTS: "--defaults-extra-file=/etc/mysql/conf.d/custom_my.cnf"
+
+
+    - name: Start MariaDB service on the remaining nodes
+      ansible.builtin.systemd:
+        name: mariadb
+        state: started
+        enabled: true
+      environment:
+        MYSQLD_OPTS: "--defaults-extra-file=/etc/mysql/conf.d/custom_my.cnf"
+
+      # when: "inventory_hostname != groups['cluster'][0]"

@@ -5,7 +5,7 @@
   tasks:
     - name: Add OpenStack repository key
       ansible.builtin.apt_key:
-        url: "https://download.ceph.com/keys/release.asc"
+        url: "http://osbpo.debian.net/osbpo/dists/pubkey.gpg"
         state: present
 
     - name: Add OpenStack repository
@@ -37,6 +37,7 @@
         ceph_user_key_{{ item.item }}: "{{ item.stdout }}"
       loop: "{{ ceph_user_keys_result.results }}"
 
+
 - name: Install and configure Keystone
   hosts: cluster
   become: true
@@ -62,29 +63,36 @@
           provider = fernet
         marker: "# {mark} ANSIBLE MANAGED BLOCK"
 
+    - name: Enable caching in Keystone configuration
+      ansible.builtin.lineinfile:
+        path: /etc/keystone/keystone.conf
+        regexp: "^enabled ="
+        line: "enabled = true"
+        insertafter: "^[cache]"
+
     - name: Create Keystone database and user
       community.mysql.mysql_db:
-        name: keystone
         login_host: "{{ cluster_ip[inventory_hostname][0] }}"
-        login_user: root
         login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: root
+        name: keystone
         state: present
 
     - name: Grant privileges to Keystone user
       community.mysql.mysql_user:
+        host: "{{ cluster_ip[inventory_hostname][0] }}"
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: root
         name: keystone
         password: "{{ keystone_db_password }}"
-        host: "{{ cluster_ip[inventory_hostname][0] }}"
         priv: "keystone.*:ALL"
-        login_user: root
-        login_password: "{{ mysql_root_password }}"
         state: present
 
     - name: Initialize Keystone database
       ansible.builtin.command:
         cmd: "keystone-manage db_sync"
-      args:
-        creates: /var/lib/keystone/keystone.db
 
     - name: Initialize Fernet keys
       ansible.builtin.command:
@@ -92,8 +100,20 @@
       args:
         creates: /etc/keystone/fernet-keys/0
 
-    - name: Start and enable Keystone service
-      ansible.builtin.systemd:
-        name: keystone
-        state: started
-        enabled: true
+    - name: Initialize credential keys
+      ansible.builtin.command:
+        cmd: "keystone-manage credential_setup --keystone-user keystone --keystone-group keystone"
+      args:
+        creates: /etc/keystone/credential-keys/0
+
+    - name: Set correct permissions for credential key repository
+      ansible.builtin.file:
+        path: /etc/keystone/credential-keys
+        owner: keystone
+        group: keystone
+        mode: "0750"
+    # - name: Start and enable Keystone service
+    #   ansible.builtin.systemd:
+    #     name: keystone
+    #     state: started
+    #     enabled: true
