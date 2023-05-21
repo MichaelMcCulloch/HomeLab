@@ -1,0 +1,6 @@
+ETCD_NAME="{{ inventory_hostname }}"
+ETCD_INITIAL_CLUSTER="{% for host in groups['cluster'] %}{{ hostvars[host]['inventory_hostname'] }}=http://{{ hostvars[host]['cluster_ip'][host][0] }}:2380{% if not loop.last %},{% endif %}{% endfor %}"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://{{ cluster_ip[inventory_hostname][0] }}:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://{{ cluster_ip[inventory_hostname][0] }}:2379"
+ETCD_LISTEN_PEER_URLS="http://{{ cluster_ip[inventory_hostname][0] }}:2380"
+ETCD_LISTEN_CLIENT_URLS="http://{{ cluster_ip[inventory_hostname][0] }}:2379"

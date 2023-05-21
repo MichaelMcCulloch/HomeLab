@@ -1,0 +1,19 @@
+<VirtualHost *:5000>
+    ServerName localhost
+
+    ProxyPass / unix:/run/uwsgi/keystone-public.socket|uwsgi://localhost:5000/
+    ProxyPassReverse / unix:/run/uwsgi/keystone-public.socket|uwsgi://localhost:5000/
+
+    ErrorLog ${APACHE_LOG_DIR}/keystone_public_error.log
+    CustomLog ${APACHE_LOG_DIR}/keystone_public_access.log combined
+</VirtualHost>
+
+<VirtualHost *:35357>
+    ServerName localhost
+
+    ProxyPass / unix:/run/uwsgi/keystone-admin.socket|uwsgi://localhost:35357/
+    ProxyPassReverse / unix:/run/uwsgi/keystone-admin.socket|uwsgi://localhost:35357/
+
+    ErrorLog ${APACHE_LOG_DIR}/keystone_admin_error.log
+    CustomLog ${APACHE_LOG_DIR}/keystone_admin_access.log combined
+</VirtualHost>

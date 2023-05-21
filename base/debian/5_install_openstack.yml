@@ -1,0 +1,220 @@
+- name: Install OpenStack
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Add OpenStack repository key
+      ansible.builtin.apt_key:
+        url: "http://osbpo.debian.net/osbpo/dists/pubkey.gpg"
+        state: present
+
+    - name: Add OpenStack repository
+      ansible.builtin.apt_repository:
+        repo: "deb http://deb.debian.org/debian/ {{ ansible_distribution_release }}-backports main"
+        state: present
+        filename: openstack
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: true
+
+- name: Obtain CephX user keys for Cinder, Glance, and Nova
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Get CephX user keys
+      ansible.builtin.command:
+        cmd: "ceph-authtool /etc/ceph/ceph.client.{{ item }}.keyring --name=client.{{ item }} --print-key"
+      register: ceph_user_keys_result
+      loop:
+        - glance
+        - cinder
+        - nova
+      changed_when: false
+
+    - name: Set CephX user keys as facts
+      ansible.builtin.set_fact:
+        ceph_user_key_{{ item.item }}: "{{ item.stdout }}"
+      loop: "{{ ceph_user_keys_result.results }}"
+      no_log: true
+
+- name: Install and configure Keystone
+  hosts: cluster
+  become: true
+  tasks:
+
+
+    - name: Open required TCP ports for etcd
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 5000
+        - 35357
+
+    - name: Install Keystone packages
+      ansible.builtin.apt:
+        name:
+          - keystone
+          - apache2
+          - libapache2-mod-proxy-uwsgi
+          - uwsgi-plugin-python3
+        state: present
+
+    - name: Enable Apache modules
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop:
+        - a2enmod proxy
+        - a2enmod proxy_uwsgi
+      changed_when: false
+
+    - name: Copy uwsgi-keystone.conf
+      ansible.builtin.template:
+        src: httpd/uwsgi-keystone.conf.j2
+        dest: /etc/apache2/sites-available/uwsgi-keystone.conf
+        mode: "0644"
+
+    - name: Copy keystone.conf
+      ansible.builtin.template:
+        src: keystone.conf.j2
+        dest: /etc/keystone/keystone.conf
+        mode: "0644"
+
+    - name: Enable uwsgi-keystone site
+      ansible.builtin.file:
+        src: /etc/apache2/sites-available/uwsgi-keystone.conf
+        dest: /etc/apache2/sites-enabled/uwsgi-keystone.conf
+        state: link
+
+    - name: Copy keystone-uwsgi-admin.ini and keystone-uwsgi-public.ini
+      ansible.builtin.copy:
+        src: "httpd/keystone-uwsgi-{{ item }}.ini"
+        dest: /etc/keystone/
+        mode: "0644"
+      loop:
+        - admin
+        - public
+
+    - name: Ensure /etc/keystone/fernet-keys/ directory exists and has correct permissions
+      ansible.builtin.file:
+        path: /etc/keystone/fernet-keys/
+        state: directory
+        owner: keystone
+        group: keystone
+        mode: '0700'
+
+    - name: Configure Keystone Fernet keys
+      ansible.builtin.command:
+        cmd: "keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone"
+      register: keystone_fernet_setup
+      changed_when: "'Created' in keystone_fernet_setup.stdout"
+
+    - name: Configure Keystone credential keys
+      ansible.builtin.command:
+        cmd: "keystone-manage credential_setup --keystone-user keystone --keystone-group keystone"
+      args:
+        creates: /etc/keystone/credential-keys/0
+      register: keystone_credential_setup
+      changed_when: "'Created' in keystone_credential_setup.stdout"
+
+    - name: Install uWSGI
+      ansible.builtin.pip:
+        name:
+          - uwsgi
+          - uwsgitop
+        state: present
+
+- name: Prepare uWSGI services for Keystone
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Ensure /run/uwsgi directory exists and has correct permissions
+      ansible.builtin.file:
+        path: /run/uwsgi
+        state: directory
+        owner: keystone
+        group: keystone
+        mode: '0700'
+
+    - name: Ensure uWSGI is installed
+      ansible.builtin.package:
+        name: uwsgi
+        state: present
+
+    - name: Create uWSGI configuration files
+      ansible.builtin.copy:
+        src: "httpd/keystone-uwsgi-{{ item }}.ini"
+        dest: "/etc/keystone/"
+        owner: keystone
+        group: keystone
+        mode: "0644"
+      loop:
+        - admin
+        - public
+
+    - name: Create systemd service files for uWSGI services
+      ansible.builtin.template:
+        src: keystone-uwsgi.service.j2
+        dest: /etc/systemd/system/keystone-uwsgi-{{ item }}.service
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - admin
+        - public
+
+    - name: Restart uWSGI services
+      ansible.builtin.systemd:
+        name: keystone-uwsgi-{{ item }}
+        state: restarted
+        enabled: true
+        daemon_reload: true
+      loop:
+        - admin
+        - public
+
+    - name: Restart apache2
+      ansible.builtin.systemd:
+        name: apache2
+        state: restarted
+
+- name: Configure Keystone database and bootstrap
+  hosts: cluster[0]
+  become: true
+  tasks:
+    - name: Create Keystone database
+      community.mysql.mysql_db:
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: root
+        name: keystone
+        state: present
+
+    - name: Create Keystone database user
+      community.mysql.mysql_user:
+        host: localhost
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: root
+        name: keystone
+        password: "{{ keystone_db_password }}"
+        priv: "keystone.*:ALL"
+        state: present
+
+    - name: Initialize Keystone database
+      ansible.builtin.command:
+        cmd: "keystone-manage db_sync"
+      register: keystone_db_sync
+      changed_when: "'Creating tables' in keystone_db_sync.stdout"
+      timeout: 360
+
+    - name: Configure Keystone bootstrap
+      ansible.builtin.command:
+        cmd: "keystone-manage bootstrap --bootstrap-password {{ keystone_admin_password }}"
+      args:
+        creates: /var/lib/keystone/bootstrap_done
+      register: keystone_bootstrap
+      changed_when: "'Created' in keystone_bootstrap.stdout"
+      timeout: 360

@@ -1,0 +1,39 @@
+---
+- name: Rolling Reboot Playbook
+  hosts: cluster[0]
+  become: true
+  tasks:
+    - name: Set Ceph noout nodown
+      ansible.builtin.command:
+        cmd: "ceph osd set {{ item }}"
+      loop:
+        - noout
+        - nodown
+      changed_when: false
+
+
+- name: Rolling Reboot Playbook
+  hosts: cluster
+  become: true
+  serial: 1
+  tasks:
+    - name: Reboot
+      ansible.builtin.reboot:
+        reboot_command: "systemctl reboot -i --reboot-argument=now"
+
+    - name: Wait for 30 seconds
+      ansible.builtin.pause:
+        seconds: 30
+
+
+- name: Rolling Reboot Playbook
+  hosts: cluster[0]
+  become: true
+  tasks:
+    - name: Unset Ceph noout nodown
+      ansible.builtin.command:
+        cmd: "ceph osd unset {{ item }}"
+      loop:
+        - noout
+        - nodown
+      changed_when: false

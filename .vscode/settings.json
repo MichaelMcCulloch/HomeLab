@@ -4,4 +4,5 @@
         "titleBar.activeBackground": "#721F52",
         "titleBar.activeForeground": "#FDF8FB"
     },
+    "ansible.python.interpreterPath": "/bin/python",
 }

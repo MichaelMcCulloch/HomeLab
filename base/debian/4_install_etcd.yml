@@ -1,0 +1,33 @@
+---
+- name: Configure etcd
+  hosts: cluster
+  become: true
+  tasks:
+
+    - name: Open required TCP ports for etcd
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 2380
+        - 2379
+
+    - name: Install Etcd
+      ansible.builtin.apt:
+        name:
+          - etcd
+        state: present
+
+    - name: Configure etcd
+      ansible.builtin.template:
+        src: etcd.conf.j2
+        dest: /etc/default/etcd
+        mode: "0644"
+      notify: Restart etcd
+
+  handlers:
+    - name: Restart etcd
+      ansible.builtin.service:
+        name: etcd
+        state: restarted

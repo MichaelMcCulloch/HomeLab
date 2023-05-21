@@ -1,0 +1,24 @@
+[DEFAULT]
+log_dir = /var/log/keystone
+
+[application_credential]
+allow_application_credential_creation = true
+
+[cache]
+backend = dogpile.cache.etcd
+url = {% for host in groups['cluster'] %}http://{{ hostvars[host]['cluster_ip'][host][0] }}:2379{% if not loop.last %},{% endif %}{% endfor %}
+
+[identity]
+driver = sql
+
+[oslo_middleware]
+enable_proxy_headers_parsing = true
+
+[oslo_policy]
+policy_file = /etc/keystone/policy.json
+
+[sql]
+connection = mysql+pymysql://keystone:{{ keystone_db_password }}@{{ inventory_hostname }}/keystone
+
+[token]
+provider = fernet

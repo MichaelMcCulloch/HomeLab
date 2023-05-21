@@ -26,4 +26,14 @@ cluster_ip:
 # Move to vault!!!
 mysql_root_password: "root_password"
 keystone_db_password: "keystone_password"
+keystone_admin_password: "keystone_admin_password"
 sst_password: "sst_password"
+
+ceph_pool_list:
+  - glance
+  - cinder
+  - nova
+  - sql
+
+keystone_public_domain: "keystone-public.example.com"
+keystone_admin_domain: "keystone-admin.example.com"

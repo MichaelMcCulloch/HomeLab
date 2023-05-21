@@ -158,24 +158,27 @@
         marker: "# {mark} ANSIBLE MANAGED BLOCK"
         mode: "0644"
 
-    
+    - name: Check if node is safe to bootstrap
+      ansible.builtin.command: "grep 'safe_to_bootstrap: 1' /var/lib/mysql/grastate.dat"
+      register: safe_to_bootstrap
+      ignore_errors: true
+      changed_when: false
 
-    - name: Bootstrap Galera Cluster on the first node
+
+    - name: Bootstrap Galera Cluster on the bootstrap node
       ansible.builtin.command:
         cmd: "galera_new_cluster"
-      when: "inventory_hostname == groups['cluster'][0]"
+      when: safe_to_bootstrap.rc == 0
       register: galera_bootstrap
       changed_when: "'Starting MySQL' in galera_bootstrap.stdout"
       environment:
         MYSQLD_OPTS: "--defaults-extra-file=/etc/mysql/conf.d/custom_my.cnf"
-
 
     - name: Start MariaDB service on the remaining nodes
       ansible.builtin.systemd:
         name: mariadb
         state: started
         enabled: true
+      when: safe_to_bootstrap.rc != 0
       environment:
         MYSQLD_OPTS: "--defaults-extra-file=/etc/mysql/conf.d/custom_my.cnf"
-
-      # when: "inventory_hostname != groups['cluster'][0]"

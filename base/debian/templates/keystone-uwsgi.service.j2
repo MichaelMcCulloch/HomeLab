@@ -1,0 +1,13 @@
+[Unit]
+Description=uWSGI service for Keystone {{ item }} endpoint
+After=syslog.target
+
+[Service]
+ExecStart=/usr/bin/uwsgi --uid keystone --gid keystone /etc/keystone/keystone-uwsgi-{{ item }}.ini
+Restart=always
+KillSignal=SIGQUIT
+Type=notify
+NotifyAccess=all
+
+[Install]
+WantedBy=multi-user.target
