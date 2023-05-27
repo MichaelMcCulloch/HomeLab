@@ -8,3 +8,60 @@
         state: present
         exclusive: true
         key: "{{ lookup('file', ansible_ssh_public_key_file) }}"
+- name: Configure nodes with Non Free firmware Repositories
+  become: true
+  hosts: cluster
+  tasks:
+    - name: Add non-free to sources.list
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list
+        regexp: '^(deb|deb-src)(.*)(?<!non-free)$'
+        replace: '\1\2 non-free'
+
+    - name: Run apt update
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Run apt upgrade
+      ansible.builtin.apt:
+        upgrade: safe
+
+- name: Install non-free wifi firmware
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Install firmware-iwlwifi
+      ansible.builtin.apt:
+        name:
+          - firmware-iwlwifi
+          - firmware-realtek
+        state: present
+
+
+    - name: Reload iwlwifi module
+      block:
+        - name: Remove iwlwifi module
+          ansible.builtin.command:
+            cmd: modprobe -r iwlwifi
+          changed_when: false
+          failed_when: false
+
+        - name: Load iwlwifi module
+          ansible.builtin.command:
+            cmd: modprobe iwlwifi
+          changed_when: false
+          failed_when: false
+
+    - name: Reload realtek module
+      block:
+        - name: Remove realtek module
+          ansible.builtin.command:
+            cmd: modprobe -r realtek
+          changed_when: false
+          failed_when: false
+
+        - name: Load realtek module
+          ansible.builtin.command:
+            cmd: modprobe realtek
+          changed_when: false
+          failed_when: false
