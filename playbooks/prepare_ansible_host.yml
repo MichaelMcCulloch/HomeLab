@@ -1,0 +1,75 @@
+- name: Prepare Ansible controller host
+  hosts: localhost
+  gather_facts: false
+  remote_user: kayoba
+  vars:
+    kayobe_venv: "/home/kayoba/kayobe/venvs"
+    kayobe_cfg: "/home/kayoba/kayobe/config"
+    kayobe_version: "13.1.0"
+    kayobe_config_repo: "https://opendev.org/openstack/kayobe-config"
+  tasks:
+    - name: Install required packages
+      become: true
+      apt:
+        name:
+          - python3-dev
+          - gcc
+          - libffi-dev
+          - python3-venv
+          - git
+          - python-is-python3
+        state: present
+
+    - name: Create virtual environment directory
+      file:
+        path: "{{ kayobe_venv }}"
+        state: directory
+        mode: "0700"
+
+    - name: Create virtual environment
+      shell: |
+        python3 -m venv "{{ kayobe_venv }}/kayobe"
+      args:
+        creates: "{{ kayobe_venv }}/kayobe"
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Activate virtual environment and install kayobe
+      shell: |
+        source "{{ kayobe_venv }}/kayobe/bin/activate"
+        pip install -U pip
+        pip install kayobe=={{ kayobe_version }}
+        kayobe complete > /tmp/kayobe-complete
+        deactivate
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Source kayobe complete
+      shell: |
+        source /tmp/kayobe-complete
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Set KAYOBE_CONFIG_PATH environment variable
+      lineinfile:
+        path: /home/kayoba/.bashrc
+        line: 'export KAYOBE_CONFIG_PATH="{{ kayobe_cfg }}"'
+        state: present
+        create: true
+        mode: "0700"
+
+    - name: Set KAYOBE_CONFIG_PATH environment variable
+      shell: |
+        export KAYOBE_CONFIG_PATH="{{ kayobe_cfg }}"
+      args:
+        executable: /bin/bash
+
+      changed_when: false
+    - name: Clone etc/kayobe/ from the repo to KAYOBE_CONFIG_PATH
+      copy:
+        src: "{{ kayobe_venv }}/kayobe/share/kayobe/etc_examples/kayobe/"
+        dest: "{{ kayobe_cfg }}"
+        remote_src: true
+        mode: "0700"

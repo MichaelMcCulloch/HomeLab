@@ -1,1 +1,0 @@
-sql/mariadb-disk    id=sql,keyring=/etc/ceph/ceph.client.sql.keyring

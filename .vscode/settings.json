@@ -5,4 +5,7 @@
         "titleBar.activeForeground": "#FDF8FB"
     },
     "ansible.python.interpreterPath": "/bin/python",
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook": "file:///home/kayoba/Documents/HomeLab/playbooks/prepare_ansible_host.yml"
+    },
 }
