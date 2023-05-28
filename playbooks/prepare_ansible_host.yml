@@ -17,6 +17,7 @@
           - libffi-dev
           - python3-venv
           - git
+          - rsync
           - python-is-python3
         state: present
 
