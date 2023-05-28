@@ -1,0 +1,21 @@
+---
+# - name: Rolling Reboot Playbook
+#   hosts: cluster
+#   become: true
+#   serial: 1
+#   tasks:
+#     - name: Reboot
+#       ansible.builtin.reboot:
+#         reboot_command: "systemctl reboot -i --reboot-argument=now"
+
+#     - name: Wait for 30 seconds
+#       ansible.builtin.pause:
+#         seconds: 30
+
+- name: Simultaneous Reboot Playbook
+  hosts: cluster
+  become: true
+  tasks:
+    - name: Reboot
+      ansible.builtin.reboot:
+        # reboot_command: "systemctl reboot -i --reboot-argument=now"
