@@ -66,11 +66,12 @@
         export KAYOBE_CONFIG_PATH="{{ kayobe_cfg }}"
       args:
         executable: /bin/bash
-
       changed_when: false
-    - name: Clone etc/kayobe/ from the repo to KAYOBE_CONFIG_PATH
-      copy:
-        src: "{{ kayobe_venv }}/kayobe/share/kayobe/etc_examples/kayobe/"
+
+    - name: Clone my_kayobe from the repo to KAYOBE_CONFIG_PATH
+      git:
+        repo: "https://github.com/MichaelMcCulloch/my_kayobe.git"
         dest: "{{ kayobe_cfg }}"
-        remote_src: true
-        mode: "0700"
+        version: "master"
+      args:
+        creates: "{{ kayobe_cfg }}"
